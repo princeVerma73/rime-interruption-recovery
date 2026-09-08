@@ -32,7 +32,37 @@ export const AgentState = {
 import { sanitizeFinalResponse } from './services/response_sanitizer.js';
 
 export default function App() {
-  const [sessionId, setSessionId] = useState('');
+  const [sessions, setSessions] = useState(() => {
+    try {
+      const saved = localStorage.getItem('rime_voice_sessions');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  const [sessionId, setSessionId] = useState(() => {
+    try {
+      return localStorage.getItem('rime_voice_active_session') || '';
+    } catch (e) {
+      return '';
+    }
+  });
+
+  const [conversationTurns, setConversationTurns] = useState(() => {
+    try {
+      const activeId = localStorage.getItem('rime_voice_active_session');
+      const saved = localStorage.getItem('rime_voice_chats');
+      if (activeId && saved) {
+        const chatsMap = JSON.parse(saved);
+        return chatsMap[activeId] || [];
+      }
+    } catch (e) {
+      return [];
+    }
+    return [];
+  });
+
   const [activeTurnId, setActiveTurnId] = useState(0);
   const [previousTurnId, setPreviousTurnId] = useState(0);
   const [previousTurnStatus, setPreviousTurnStatus] = useState('');
@@ -42,7 +72,6 @@ export default function App() {
   const [currentAudio, setCurrentAudio] = useState(null);
   const [events, setEvents] = useState([]);
   const [ttsText, setTtsText] = useState('');
-  const [conversationTurns, setConversationTurns] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -53,7 +82,7 @@ export default function App() {
   const [errorMessage, setErrorMessage] = useState('');
   const [isDevMode, setIsDevMode] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [sessions, setSessions] = useState([]);
+  // Audio device state & microphone testing
   const [micLevel, setMicLevel] = useState(0);
   const [audioDevices, setAudioDevices] = useState([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState(() => localStorage.getItem('rime_mic_device') || '');
@@ -118,6 +147,41 @@ export default function App() {
       setErrorMessage(`Microphone test failed: ${err.message}`);
     }
   };
+
+  // Sync Sessions to LocalStorage
+  useEffect(() => {
+    if (sessions && sessions.length > 0) {
+      try {
+        localStorage.setItem('rime_voice_sessions', JSON.stringify(sessions));
+      } catch (e) {
+        console.error('Failed to save sessions to localStorage:', e);
+      }
+    }
+  }, [sessions]);
+
+  // Sync Active Session ID to LocalStorage
+  useEffect(() => {
+    if (sessionId) {
+      try {
+        localStorage.setItem('rime_voice_active_session', sessionId);
+      } catch (e) {
+        console.error('Failed to save active sessionId to localStorage:', e);
+      }
+    }
+  }, [sessionId]);
+
+  // Sync Conversation Turns for current sessionId to LocalStorage
+  useEffect(() => {
+    if (!sessionId) return;
+    try {
+      const saved = localStorage.getItem('rime_voice_chats');
+      const chatsMap = saved ? JSON.parse(saved) : {};
+      chatsMap[sessionId] = conversationTurns;
+      localStorage.setItem('rime_voice_chats', JSON.stringify(chatsMap));
+    } catch (e) {
+      console.error('Failed to save chat turns to localStorage:', e);
+    }
+  }, [conversationTurns, sessionId]);
 
   // Sync VAD callbacks with current React state
   useEffect(() => {
@@ -191,9 +255,96 @@ export default function App() {
       setMicLevel(lvl);
     });
 
-    // 4. VAD real-time barge-in listener
+    // 4. VAD real-time barge-in and hands-free continuous speech listener
     const unsubVAD = defaultVAD.onEvent(async (evt) => {
-      if (evt.eventType === VADEventType.INTERRUPTION_DETECTED) {
+      if (evt.eventType === VADEventType.SPEECH_STARTED) {
+        if (defaultRecorder.state !== RecorderState.RECORDING && !isProcessing) {
+          try {
+            await defaultRecorder.startRecording();
+            setAgentState(AgentState.LISTENING);
+          } catch (e) {
+            console.error('Failed to start recorder on VAD speech onset:', e);
+          }
+        }
+      } else if (evt.eventType === VADEventType.SPEECH_ENDED) {
+        if (defaultRecorder.state === RecorderState.RECORDING) {
+          try {
+            const recResult = await defaultRecorder.stopRecording();
+            if (recResult && recResult.blob && recResult.blob.size > 0) {
+              setIsProcessing(true);
+              setAgentState(AgentState.TRANSCRIBING);
+
+              setAgentState(AgentState.THINKING);
+              const { blob, headers } = await defaultApiClient.processAgentAudio({
+                audioBlob: recResult.blob,
+                sessionId,
+              });
+
+              const turnId = headers.turnId;
+              setActiveTurnId(turnId);
+              defaultPlaybackManager.setActiveTurn(turnId);
+              updateSessionTitleIfFirst(sessionId, headers.userTranscript);
+
+              const validatedResponse = sanitizeFinalResponse(headers.finalResponse || headers.assistantResponse);
+              setConversationTurns((prev) => [
+                ...prev,
+                {
+                  turnId,
+                  userPrompt: headers.userTranscript,
+                  assistantResponse: validatedResponse,
+                  speaker: headers.speaker || 'celeste',
+                  modelId: headers.modelId || 'coda',
+                  latencyMs: headers.latencyMs,
+                  status: 'COMPLETED',
+                },
+              ]);
+              setTtsText('');
+
+              setEvents((prev) => [
+                {
+                  event_type: 'VAD_ORCHESTRATION_SUCCESS',
+                  timestamp_ms: Date.now(),
+                  session_id: headers.sessionId,
+                  turn_id: turnId,
+                  state: playbackState,
+                  details: {
+                    transcript: headers.userTranscript,
+                    response: headers.assistantResponse,
+                    speaker: headers.speaker,
+                    latency_ms: headers.latencyMs,
+                  },
+                },
+                ...prev.slice(0, 59),
+              ]);
+
+              setAgentState(AgentState.PLAYING);
+              await defaultPlaybackManager.playAudio({
+                sessionId: headers.sessionId,
+                turnId: turnId,
+                audioSource: blob,
+                metadata: {
+                  speaker: headers.speaker || 'celeste',
+                  modelId: headers.modelId || 'coda',
+                  format: headers.audioFormat || 'mp3',
+                  bytes: headers.audioBytesLength,
+                },
+              });
+            }
+          } catch (err) {
+            if (err.status === 409 || err.message?.includes('cancelled') || err.message?.includes('superseded')) {
+              console.log('VAD turn processing interrupted cleanly:', err.message);
+              setAgentState(AgentState.LISTENING);
+              setErrorMessage('');
+            } else {
+              console.error('VAD Voice Agent processing error:', err);
+              setAgentState(AgentState.ERROR);
+              setErrorMessage(`VAD Processing Error: ${err.message}`);
+            }
+          } finally {
+            setIsProcessing(false);
+          }
+        }
+      } else if (evt.eventType === VADEventType.INTERRUPTION_DETECTED) {
         const t_detection = Date.now();
 
         defaultPlaybackManager.stopCurrentAudio('vad_barge_in');
@@ -291,6 +442,13 @@ export default function App() {
           ]);
 
           setAgentState(AgentState.LISTENING);
+          if (defaultRecorder.state !== RecorderState.RECORDING) {
+            try {
+              await defaultRecorder.startRecording();
+            } catch (e) {
+              console.error('Failed to start recorder on interruption:', e);
+            }
+          }
         } catch (err) {
           console.error('Failed to notify backend of interruption:', err);
           setAgentState(AgentState.IDLE);
@@ -407,6 +565,18 @@ export default function App() {
 
   const handleSelectSession = (id) => {
     setSessionId(id);
+    try {
+      const savedMap = localStorage.getItem('rime_voice_chats');
+      if (savedMap) {
+        const map = JSON.parse(savedMap);
+        setConversationTurns(map[id] || []);
+      } else {
+        setConversationTurns([]);
+      }
+    } catch (e) {
+      console.error('Failed to restore session chat turns:', e);
+      setConversationTurns([]);
+    }
     defaultPlaybackManager.setSession(id, 1);
     defaultWebSocketClient.connect(id);
   };
@@ -435,6 +605,21 @@ export default function App() {
     } catch (err) {
       setErrorMessage(`Failed to advance turn: ${err.message}`);
     }
+  };
+
+  const updateSessionTitleIfFirst = (sessId, promptText) => {
+    if (!sessId || !promptText || !promptText.trim()) return;
+    const cleanPrompt = promptText.trim();
+    const titleText = cleanPrompt.slice(0, 26) + (cleanPrompt.length > 26 ? '...' : '');
+
+    setSessions((prevSessions) =>
+      prevSessions.map((s) => {
+        if (s.id === sessId && (s.title.startsWith('Voice Session #') || s.title.startsWith('New Chat'))) {
+          return { ...s, title: titleText };
+        }
+        return s;
+      })
+    );
   };
 
   // Handler: Push-to-Talk Recording
@@ -478,6 +663,7 @@ export default function App() {
         const turnId = headers.turnId;
         setActiveTurnId(turnId);
         defaultPlaybackManager.setActiveTurn(turnId);
+        updateSessionTitleIfFirst(sessionId, headers.userTranscript);
 
         const validatedResponse = sanitizeFinalResponse(headers.finalResponse);
         setConversationTurns((prev) => [
@@ -575,6 +761,7 @@ export default function App() {
       const turnId = headers.turnId;
       setActiveTurnId(turnId);
       defaultPlaybackManager.setActiveTurn(turnId);
+      updateSessionTitleIfFirst(sessionId, promptToSend);
 
       const validatedResponse = sanitizeFinalResponse(headers.finalResponse || headers.assistantResponse);
       setConversationTurns((prev) => [

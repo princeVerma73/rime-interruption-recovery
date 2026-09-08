@@ -27,12 +27,11 @@ export const VADEventType = {
 
 export const DEFAULT_VAD_CONFIG = {
   // RMS energy threshold for speech onset (0.0 to 1.0)
-  // 0.02 is ~ -34 dBFS, clearly separating ambient room noise from spoken voice
-  energyThreshold: 0.02,
+  // 0.01 is ~ -40 dBFS, responsive for clear voice detection across desktop/laptop mics
+  energyThreshold: 0.01,
 
   // Minimum duration of continuous speech above threshold before triggering speech onset (ms)
-  // Eliminates false triggers from short clicks, keystrokes, and pops (< 150ms)
-  minSpeechDurationMs: 150,
+  minSpeechDurationMs: 120,
 
   // Duration of continuous silence below threshold before declaring speech ended (ms)
   silenceDurationMs: 700,

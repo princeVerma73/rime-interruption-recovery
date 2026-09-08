@@ -20,7 +20,7 @@ export default function ChatInput({
   onSelectQuickPrompt,
 }) {
   const isPlaying = playbackState === PlaybackState.PLAYING || agentState === 'PLAYING';
-  const isListening = isRecording || agentState === 'LISTENING';
+  const isListening = isRecording || isVADActive || agentState === 'LISTENING';
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -38,6 +38,7 @@ export default function ChatInput({
         state={playbackState}
         agentState={agentState}
         isListening={isListening}
+        isVADActive={isVADActive}
         isProcessing={isProcessing}
       />
 

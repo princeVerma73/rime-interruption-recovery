@@ -62,34 +62,12 @@ export default function SpeakingIndicator({ state, agentState, currentAudio, int
     <div
       className={`speaking-visualizer ${isPlaying ? 'active' : ''} ${isLoading || isThinking || isTranscribing ? 'loading' : ''} ${isListening ? 'listening' : ''} ${isInterrupting ? 'interrupting' : ''}`}
     >
-      <div className="visualizer-orb" style={isListening && dynamicScale > 0.3 ? { transform: `scale(${1 + dynamicScale * 0.15})` } : undefined}>
-        <div className="wave-ring ring-1"></div>
-        <div className="wave-ring ring-2"></div>
-        <div className="wave-ring ring-3"></div>
+      <div className="visualizer-orb">
         <div className="orb-core">
           <span className={`orb-icon ${isLoading || isThinking ? 'spin' : isPlaying ? 'pulse' : isInterrupting ? 'flash' : ''}`}>
             {getOrbIcon()}
           </span>
         </div>
-      </div>
-
-      <div className="waveform-bars">
-        {[40, 70, 95, 60, 85, 100, 75, 90, 50, 65, 80, 45].map((height, idx) => (
-          <span
-            key={idx}
-            className="bar"
-            style={{
-              height: isPlaying
-                ? `${height}%`
-                : isListening
-                ? `${Math.round(height * dynamicScale)}%`
-                : isInterrupting
-                ? '10%'
-                : '15%',
-              animationDelay: `${idx * 0.08}s`,
-            }}
-          />
-        ))}
       </div>
 
       <div className="speaking-status-text">

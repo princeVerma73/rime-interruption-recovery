@@ -1,11 +1,11 @@
 import React, { useEffect, useRef } from 'react';
 import { PlaybackState } from '../services/audio.js';
 
-export default function WaveformCanvas({ state, agentState, isListening, isProcessing }) {
+export default function WaveformCanvas({ state, agentState, isListening, isProcessing, isVADActive }) {
   const canvasRef = useRef(null);
 
   const isPlaying = state === PlaybackState.PLAYING || agentState === 'PLAYING';
-  const isActive = isListening || isPlaying || isProcessing || agentState === 'THINKING' || agentState === 'SYNTHESIZING' || agentState === 'INTERRUPTING';
+  const isActive = isListening || isVADActive || isPlaying || isProcessing || agentState === 'THINKING' || agentState === 'SYNTHESIZING' || agentState === 'INTERRUPTING';
 
   useEffect(() => {
     if (!isActive) return;
@@ -24,7 +24,7 @@ export default function WaveformCanvas({ state, agentState, isListening, isProce
 
       ctx.clearRect(0, 0, width, height);
 
-      // Determine colors based on active mode: Blue when Listening, Green when AI Speaking
+      // Determine colors based on active mode: Blue when Listening / VAD Active, Green when AI Speaking
       let strokeColor1, strokeColor2, glowColor;
 
       if (isPlaying) {
@@ -32,8 +32,8 @@ export default function WaveformCanvas({ state, agentState, isListening, isProce
         strokeColor1 = '#10b981'; // Emerald Green
         strokeColor2 = '#34d399'; // Mint Green
         glowColor = 'rgba(16, 185, 129, 0.4)';
-      } else if (isListening) {
-        // User Speaking / Mic -> Blue Wave
+      } else if (isListening || isVADActive) {
+        // User Speaking / Mic / VAD Active -> Blue Wave
         strokeColor1 = '#06b6d4'; // Cyan
         strokeColor2 = '#3b82f6'; // Royal Blue
         glowColor = 'rgba(6, 182, 212, 0.4)';
@@ -57,7 +57,7 @@ export default function WaveformCanvas({ state, agentState, isListening, isProce
       grad1.addColorStop(1, strokeColor2);
       ctx.strokeStyle = grad1;
 
-      const amplitude = isPlaying ? 22 : isListening ? 26 : 14;
+      const amplitude = isPlaying ? 22 : (isListening || isVADActive) ? 26 : 14;
       const frequency = 0.025;
 
       for (let x = 0; x < width; x++) {
@@ -84,7 +84,7 @@ export default function WaveformCanvas({ state, agentState, isListening, isProce
 
       ctx.restore();
 
-      phase += isPlaying ? 0.08 : isListening ? 0.1 : 0.04;
+      phase += isPlaying ? 0.08 : (isListening || isVADActive) ? 0.1 : 0.04;
       animationFrameId = requestAnimationFrame(render);
     };
 
@@ -93,7 +93,7 @@ export default function WaveformCanvas({ state, agentState, isListening, isProce
     return () => {
       cancelAnimationFrame(animationFrameId);
     };
-  }, [isActive, isPlaying, isListening, isProcessing, agentState]);
+  }, [isActive, isPlaying, isListening, isVADActive, isProcessing, agentState]);
 
   if (!isActive) return null;
 
@@ -101,7 +101,7 @@ export default function WaveformCanvas({ state, agentState, isListening, isProce
     <div className="waveform-canvas-container">
       <div className="canvas-header-info">
         <span className={`canvas-status-tag ${isPlaying ? 'status-speaking' : 'status-listening'}`}>
-          {isPlaying ? 'AI Speaking' : isListening ? 'Listening to Mic' : 'Processing'}
+          {isPlaying ? 'AI Speaking' : isVADActive ? 'VAD Continuous Listening' : isListening ? 'Listening to Mic' : 'Processing'}
         </span>
       </div>
       <canvas ref={canvasRef} width={400} height={60} className="waveform-canvas" />
