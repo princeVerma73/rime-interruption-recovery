@@ -27,10 +27,16 @@ class Settings(BaseModel):
     rime_api_key: str = Field(default_factory=lambda: os.getenv("RIME_API_KEY", ""))
     groq_api_key: str = Field(default_factory=lambda: os.getenv("GROQ_API_KEY", ""))
     gemini_api_key: str = Field(default_factory=lambda: os.getenv("GEMINI_API_KEY", ""))
+    tavily_api_key: str = Field(default_factory=lambda: os.getenv("TAVILY_API_KEY", ""))
 
     # Optional Providers
     llm_provider: str = Field(default_factory=lambda: os.getenv("LLM_PROVIDER", "groq").lower())
     stt_provider: str = Field(default_factory=lambda: os.getenv("STT_PROVIDER", "groq").lower())
+
+    # Tavily Search Configuration
+    tavily_api_url: str = Field(
+        default_factory=lambda: os.getenv("TAVILY_API_URL", "https://api.tavily.com/search")
+    )
 
     # Rime TTS Configuration
     rime_api_url: str = Field(
@@ -59,7 +65,7 @@ class Settings(BaseModel):
         default_factory=lambda: os.getenv("GROQ_LLM_URL", "https://api.groq.com/openai/v1/chat/completions")
     )
     groq_model: str = Field(
-        default_factory=lambda: os.getenv("GROQ_MODEL", "qwen/qwen3.6-27b")
+        default_factory=lambda: os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
     )
 
     def validate_required_keys(self) -> None:
@@ -88,6 +94,10 @@ class Settings(BaseModel):
         return bool(self.rime_api_key and self.rime_api_key.strip())
 
     @property
+    def is_tavily_configured(self) -> bool:
+        return bool(self.tavily_api_key and self.tavily_api_key.strip())
+
+    @property
     def is_fully_configured(self) -> bool:
         try:
             self.validate_required_keys()
@@ -102,6 +112,7 @@ class Settings(BaseModel):
             f"rime_api_key='{'***' if self.rime_api_key else ''}', "
             f"groq_api_key='{'***' if self.groq_api_key else ''}', "
             f"gemini_api_key='{'***' if self.gemini_api_key else ''}', "
+            f"tavily_api_key='{'***' if self.tavily_api_key else ''}', "
             f"llm_provider='{self.llm_provider}', "
             f"stt_provider='{self.stt_provider}')"
         )

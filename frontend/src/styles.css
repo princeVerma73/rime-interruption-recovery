@@ -1651,19 +1651,33 @@ body {
 
 .chat-msg {
   display: flex;
-  gap: 16px;
-  max-width: 100%;
+  gap: 14px;
+  max-width: 82%;
+  width: auto;
+}
+
+.chat-msg.user-msg {
+  align-self: flex-end;
+  margin-left: auto;
+  flex-direction: row-reverse;
+}
+
+.chat-msg.assistant-msg {
+  align-self: flex-start;
+  margin-right: auto;
+  flex-direction: row;
 }
 
 .msg-avatar {
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.1rem;
+  font-size: 1.05rem;
   flex-shrink: 0;
+  margin-top: 2px;
 }
 
 .user-avatar {
@@ -1688,13 +1702,15 @@ body {
 }
 
 .user-bubble-content {
-  background: rgba(59, 130, 246, 0.08);
-  border: 1px solid rgba(59, 130, 246, 0.18);
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  border-top-right-radius: 4px;
 }
 
 .assistant-bubble-content {
-  background: rgba(18, 24, 38, 0.8);
+  background: rgba(18, 24, 38, 0.85);
   border: 1px solid var(--border-card);
+  border-top-left-radius: 4px;
 }
 
 .msg-interrupted .assistant-bubble-content {
@@ -1762,9 +1778,60 @@ body {
   box-shadow: 0 0 20px rgba(6, 182, 212, 0.25);
 }
 
+.input-voice-session-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 9999px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  border: 1px solid transparent;
+}
+
+.input-voice-session-btn.voice-session-idle {
+  background: rgba(6, 182, 212, 0.12);
+  border-color: rgba(6, 182, 212, 0.35);
+  color: #06b6d4;
+}
+
+.input-voice-session-btn.voice-session-idle:hover {
+  background: rgba(6, 182, 212, 0.22);
+  transform: scale(1.03);
+  box-shadow: 0 0 16px rgba(6, 182, 212, 0.3);
+}
+
+.input-voice-session-btn.voice-session-active {
+  background: rgba(244, 63, 94, 0.16);
+  border-color: var(--accent-rose);
+  color: #fb7185;
+}
+
+.input-voice-session-btn.voice-session-active:hover {
+  background: rgba(244, 63, 94, 0.28);
+  transform: scale(1.03);
+  box-shadow: 0 0 16px rgba(244, 63, 94, 0.4);
+}
+
+.end-voice-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 8px #ef4444;
+  animation: blink-dot 1.2s infinite ease-in-out;
+}
+
+.voice-btn-label {
+  white-space: nowrap;
+}
+
 .input-action-btn {
-  width: 38px;
-  height: 38px;
+  width: 42px;
+  height: 42px;
   border-radius: 50%;
   border: 1px solid var(--border-card);
   background: rgba(255, 255, 255, 0.05);
@@ -1776,11 +1843,61 @@ body {
   cursor: pointer;
   transition: all 0.2s ease;
   flex-shrink: 0;
+  position: relative;
 }
 
 .input-action-btn:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.12);
-  transform: scale(1.05);
+  transform: scale(1.06);
+}
+
+.btn-voice-primary {
+  background: rgba(6, 182, 212, 0.12);
+  border-color: rgba(6, 182, 212, 0.35);
+  box-shadow: 0 0 12px rgba(6, 182, 212, 0.15);
+}
+
+.btn-voice-primary.voice-active {
+  background: rgba(16, 185, 129, 0.18);
+  border-color: var(--accent-emerald);
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.35);
+}
+
+.btn-voice-primary.listening-pulse {
+  animation: pulse-voice 1.4s infinite ease-in-out;
+}
+
+.btn-voice-primary.speaking-wave {
+  animation: pulse-speaking 1.2s infinite ease-in-out;
+}
+
+.voice-status-dot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 8px #10b981;
+  animation: blink-dot 2s infinite ease-in-out;
+}
+
+@keyframes pulse-voice {
+  0% { box-shadow: 0 0 6px rgba(6, 182, 212, 0.4); }
+  50% { box-shadow: 0 0 20px rgba(6, 182, 212, 0.8), 0 0 30px rgba(16, 185, 129, 0.4); transform: scale(1.05); }
+  100% { box-shadow: 0 0 6px rgba(6, 182, 212, 0.4); }
+}
+
+@keyframes pulse-speaking {
+  0% { box-shadow: 0 0 6px rgba(16, 185, 129, 0.4); }
+  50% { box-shadow: 0 0 22px rgba(16, 185, 129, 0.85); transform: scale(1.04); }
+  100% { box-shadow: 0 0 6px rgba(16, 185, 129, 0.4); }
+}
+
+@keyframes blink-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 
 .btn-mic.recording {

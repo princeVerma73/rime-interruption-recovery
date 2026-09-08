@@ -52,6 +52,8 @@ app.add_middleware(
         "X-Audio-Format",
         "X-Audio-Bytes-Length",
         "X-Pipeline-Latency-Ms",
+        "X-Search-Used",
+        "X-Search-Sources",
     ],
 )
 

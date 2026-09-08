@@ -31,10 +31,10 @@ export const DEFAULT_VAD_CONFIG = {
   energyThreshold: 0.01,
 
   // Minimum duration of continuous speech above threshold before triggering speech onset (ms)
-  minSpeechDurationMs: 120,
+  minSpeechDurationMs: 100,
 
   // Duration of continuous silence below threshold before declaring speech ended (ms)
-  silenceDurationMs: 700,
+  silenceDurationMs: 550,
 
   // Minimum interval between successive interruption events to prevent event spam (ms)
   debounceMs: 400,
@@ -251,6 +251,14 @@ export class VoiceActivityDetector {
       this._transitionTo(VADState.ERROR);
       throw new Error(`Failed to initialize VAD: ${err.message}`);
     }
+  }
+
+  /**
+   * Get the active media stream if VAD is running.
+   * @returns {MediaStream|null}
+   */
+  getMediaStream() {
+    return this.mediaStream;
   }
 
   /**

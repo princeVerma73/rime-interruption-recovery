@@ -601,6 +601,8 @@ async def voice_websocket_session_endpoint(websocket: WebSocket, session_id: str
         while True:
             # Support both text JSON events and binary frames
             message = await websocket.receive()
+            if message.get("type") == "websocket.disconnect":
+                break
             if "text" in message:
                 await default_ws_manager.handle_message(
                     websocket=websocket,
@@ -613,10 +615,11 @@ async def voice_websocket_session_endpoint(websocket: WebSocket, session_id: str
                     session_id=session.session_id,
                     raw_message=message["bytes"],
                 )
-    except WebSocketDisconnect:
-        default_ws_manager.disconnect(websocket, session_id=session.session_id)
+    except (WebSocketDisconnect, RuntimeError):
+        pass
     except Exception as e:
         logger.warning(f"WebSocket session {session_id} error: {e}")
+    finally:
         default_ws_manager.disconnect(websocket, session_id=session.session_id)
 
 

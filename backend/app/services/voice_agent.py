@@ -19,7 +19,19 @@ from dataclasses import dataclass
 
 from backend.app.core.cancellation import CancellationManager, default_cancellation_manager
 from backend.app.services.stt import GroqSTTService, default_stt_service, STTError
-from backend.app.services.llm import GroqLLMService, default_llm_service, GroqLLMServiceError
+from backend.app.services.llm import (
+    GroqLLMService,
+    default_llm_service,
+    GroqLLMServiceError,
+    clean_final_user_response,
+    is_search_query,
+    format_search_context,
+)
+from backend.app.services.tavily_search import (
+    TavilySearchService,
+    default_tavily_service,
+    TavilySearchError,
+)
 from backend.app.services.rime_tts import RimeTTSService, default_rime_service, RimeTTSError
 from backend.app.services.conversation import (
     ConversationManager,
@@ -28,7 +40,7 @@ from backend.app.services.conversation import (
     StaleTurnMutationError,
     default_conversation_manager,
 )
-from backend.app.models.schemas import RimeTTSMetadata, VoiceAgentResponse
+from backend.app.models.schemas import RimeTTSMetadata, VoiceAgentResponse, ChatMessage
 
 
 class VoiceAgentStaleTurnError(Exception):
@@ -58,6 +70,8 @@ class VoiceAgentExecutionResult:
     tts_metadata: RimeTTSMetadata
     llm_metadata: Dict[str, Any]
     latency_ms: float
+    search_used: bool = False
+    search_sources: List[str] = None
 
     def to_response(self) -> VoiceAgentResponse:
         """Convert execution result to API response model."""
@@ -81,7 +95,7 @@ class VoiceAgentExecutionResult:
 
 
 class VoiceAgentOrchestrator:
-    """Orchestrates end-to-end voice interactions across STT, Conversation State, LLM, and Rime TTS."""
+    """Orchestrates end-to-end voice interactions across STT, Conversation State, LLM, Tavily Search, and Rime TTS."""
 
     def __init__(
         self,
@@ -89,6 +103,7 @@ class VoiceAgentOrchestrator:
         stt_service: Optional[GroqSTTService] = None,
         llm_service: Optional[GroqLLMService] = None,
         rime_service: Optional[RimeTTSService] = None,
+        tavily_service: Optional[TavilySearchService] = None,
         cancellation_manager: Optional[CancellationManager] = None,
     ):
         self.conversation_manager: ConversationManager = (
@@ -97,6 +112,7 @@ class VoiceAgentOrchestrator:
         self.stt_service: GroqSTTService = stt_service or default_stt_service
         self.llm_service: GroqLLMService = llm_service or default_llm_service
         self.rime_service: RimeTTSService = rime_service or default_rime_service
+        self.tavily_service: TavilySearchService = tavily_service or default_tavily_service
         self.cancellation_manager: CancellationManager = (
             cancellation_manager or default_cancellation_manager
         )
@@ -227,13 +243,46 @@ class VoiceAgentOrchestrator:
             if not user_prompt_text.strip():
                 raise VoiceAgentOrchestrationError("User prompt is empty (speech was unparseable or text was blank).", status_code=400)
 
-            # Step 3: Pre-LLM Turn Validation
-            if not session.validate_turn(current_turn_id):
-                raise VoiceAgentStaleTurnError(
-                    f"Turn {current_turn_id} superseded before LLM response generation.",
-                    session_id=current_session_id,
-                    turn_id=current_turn_id,
-                )
+            # Step 3: Check if User Prompt Requires Real-Time Web Search
+            search_used = False
+            search_sources = []
+            search_context_text = ""
+
+            if is_search_query(user_prompt_text):
+                # Pre-Search Turn Validation
+                if not session.validate_turn(current_turn_id):
+                    raise VoiceAgentStaleTurnError(
+                        f"Turn {current_turn_id} superseded before web search.",
+                        session_id=current_session_id,
+                        turn_id=current_turn_id,
+                    )
+
+                try:
+                    search_res = await self.tavily_service.search(
+                        query=user_prompt_text,
+                        max_results=3,
+                        session_id=current_session_id,
+                        turn_id=current_turn_id,
+                    )
+                    
+                    # Post-Search Turn Validation (Stale Result Rejection)
+                    if not session.validate_turn(current_turn_id):
+                        raise VoiceAgentStaleTurnError(
+                            f"Turn {current_turn_id} superseded during web search. Search results discarded.",
+                            session_id=current_session_id,
+                            turn_id=current_turn_id,
+                        )
+
+                    if search_res.results:
+                        search_used = True
+                        search_sources = [r.url for r in search_res.results if r.url]
+                        search_context_text = format_search_context(user_prompt_text, search_res.results)
+                except VoiceAgentStaleTurnError:
+                    raise
+                except Exception as e:
+                    # Non-fatal search failure: log and proceed with LLM fallback
+                    print(f"[VOICE_AGENT] Tavily search fallback: {e}")
+                    search_context_text = "Note: Live web search was temporarily unavailable for this query. Provide a direct, helpful answer based on your existing general knowledge without claiming to have real-time live data."
 
             # Step 4: Extract LLM Conversation Context
             llm_messages = session.get_context_for_llm(
@@ -242,10 +291,14 @@ class VoiceAgentOrchestrator:
             )
 
             # Step 5: Groq LLM Response Generation
+            effective_system_prompt = system_prompt or ""
+            if search_context_text:
+                effective_system_prompt = f"{effective_system_prompt}\n\n{search_context_text}".strip()
+
             try:
                 llm_result = await self.llm_service.generate(
                     messages=llm_messages,
-                    system_prompt=system_prompt,
+                    system_prompt=effective_system_prompt if effective_system_prompt else None,
                 )
                 raw_text = (
                     llm_result.get("final_response") or llm_result.get("response") or llm_result.get("text") or ""
@@ -256,7 +309,6 @@ class VoiceAgentOrchestrator:
                 raise VoiceAgentOrchestrationError(f"Invalid LLM Request: {str(e)}", status_code=400)
 
             # Defensive verification: Ensure assistant_response_text is strictly user-facing
-            from backend.app.services.llm import clean_final_user_response
             assistant_response_text = clean_final_user_response(
                 raw_text,
                 user_prompt=user_prompt_text,
@@ -313,6 +365,8 @@ class VoiceAgentOrchestrator:
                 tts_metadata=tts_metadata,
                 llm_metadata=llm_result,
                 latency_ms=round(total_latency_ms, 2),
+                search_used=search_used,
+                search_sources=search_sources,
             )
         except asyncio.CancelledError:
             # Cancellation requested: do not mutate conversation history, clean up and re-raise

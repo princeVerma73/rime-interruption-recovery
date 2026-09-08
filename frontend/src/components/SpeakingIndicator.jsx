@@ -25,34 +25,25 @@ export default function SpeakingIndicator({ state, agentState, currentAudio, int
 
   const getStatusLabel = () => {
     if (isInterrupting) {
-      return {
-        text: `Barge-In Interruption Detected! Turn #${interruptionInfo?.previousTurnId || ''} speech halted promptly (${interruptionInfo?.stopLatencyMs?.toFixed(2) || '< 0.2'} ms).`,
-        cls: 'interrupting',
-      };
+      return { text: 'Listening...', cls: 'recording' };
     }
     if (isListening) {
-      const isVoiceActive = micLevel > 0.015;
-      return {
-        text: isVoiceActive
-          ? 'Listening... (Voice detected, speak freely)'
-          : 'Listening... (Speak into your microphone)',
-        cls: 'recording',
-      };
+      return { text: 'Listening...', cls: 'recording' };
     }
-    if (isTranscribing) return { text: 'Transcribing speech via Groq Whisper (whisper-large-v3)...', cls: 'loading' };
-    if (isThinking) return { text: 'Generating response via Groq LLM (qwen/qwen3.6-27b)...', cls: 'thinking' };
-    if (isLoading) return { text: 'Synthesizing conversational voice via Rime Labs (coda / celeste)...', cls: 'loading' };
+    if (isTranscribing) return { text: 'Thinking...', cls: 'loading' };
+    if (isThinking) return { text: 'Thinking & searching...', cls: 'thinking' };
+    if (isLoading) return { text: 'Thinking...', cls: 'loading' };
     if (isPlaying) {
       return {
-        text: `Speaking Turn #${currentAudio?.turnId || ''} via Rime Labs (${currentAudio?.metadata?.speaker || 'celeste'})`,
+        text: `Speaking via Rime · ${currentAudio?.metadata?.speaker || 'celeste'}`,
         cls: 'playing',
       };
     }
-    if (isStopped) return { text: 'Audio Playback Stopped (Buffer Purged)', cls: 'stopped' };
+    if (isStopped) return { text: 'Audio Playback Stopped', cls: 'stopped' };
     if (agentState === 'ERROR' || state === PlaybackState.ERROR) {
-      return { text: errorMessage || 'Pipeline Error encountered', cls: 'error' };
+      return { text: errorMessage || 'An error occurred. Please try again.', cls: 'error' };
     }
-    return { text: 'Voice Assistant Ready — Speak or click Talk to begin', cls: 'idle' };
+    return { text: 'Voice Assistant Ready', cls: 'idle' };
   };
 
   const statusInfo = getStatusLabel();

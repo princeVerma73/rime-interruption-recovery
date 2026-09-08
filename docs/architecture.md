@@ -2,8 +2,8 @@
 
 **Project:** Voice AI Assistant with Interruption & Recovery  
 **Hackathon:** DataForge 2026 Rime Hackathon  
-**Phase:** Phase 14 — Real-Time Full-Duplex WebSocket Layer  
-**Status:** FULL-DUPLEX WEBSOCKET LAYER COMPLETE (Bidirectional Event Gateway -> Inbound Audio Chunking -> Outbound Event & Audio Streaming -> Realtime Interruption Discard -> Pre-Send Stale Validation Gate -> 136 Backend Tests & 37 Frontend Tests Passing with 0 Live API Calls)
+**Phase:** Phase 16 — Tavily Web Search & Speech Input Diagnostics Fix  
+**Status:** COMPLETE (Tavily Search Service -> Turn-Aware Search Tooling -> Stale Search Rejection -> Audio Capture Stream Sharing -> 177 Backend Tests & 56 Frontend Tests Passing)
 
 ---
 

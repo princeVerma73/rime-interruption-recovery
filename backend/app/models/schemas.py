@@ -202,3 +202,23 @@ class InterruptionEventResponse(BaseModel):
     detection_source: str = Field(default="vad", description="Detection source")
     assistant_state: Optional[str] = Field(default=None, description="Assistant state at moment of detection")
 
+
+class TavilySearchResult(BaseModel):
+    """Structured search result item returned from Tavily API."""
+    title: str = Field(..., description="Title of the web page / article")
+    url: str = Field(..., description="Canonical source URL")
+    content: str = Field(..., description="Relevant content snippet")
+    score: Optional[float] = Field(default=None, description="Relevance ranking score")
+    published_date: Optional[str] = Field(default=None, description="Publication timestamp if available")
+
+
+class TavilySearchResponse(BaseModel):
+    """Structured search response containing validated results."""
+    query: str = Field(..., description="Cleaned search query string")
+    results: List[TavilySearchResult] = Field(default_factory=list, description="Ranked list of search results")
+    session_id: Optional[str] = Field(default=None, description="Associated session ID")
+    turn_id: Optional[int] = Field(default=None, description="Associated turn ID")
+    status: str = Field(default="SUCCESS", description="Execution outcome: SUCCESS, ERROR, or STALE_DISCARDED")
+    latency_ms: Optional[float] = Field(default=None, description="Search round-trip duration in milliseconds")
+
+

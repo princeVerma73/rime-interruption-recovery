@@ -576,6 +576,8 @@ async def process_agent_audio(
         "X-Audio-Format": _safe_header_value(result.tts_metadata.audio_format),
         "X-Audio-Bytes-Length": str(len(result.audio_bytes)),
         "X-Pipeline-Latency-Ms": str(result.latency_ms),
+        "X-Search-Used": "true" if result.search_used else "false",
+        "X-Search-Sources": _safe_header_value(", ".join(result.search_sources or [])),
     }
 
     return Response(content=result.audio_bytes, media_type=media_type, headers=headers)
@@ -654,6 +656,8 @@ async def process_agent_text(request: VoiceAgentTextRequest) -> Response:
         "X-Audio-Format": _safe_header_value(result.tts_metadata.audio_format),
         "X-Audio-Bytes-Length": str(len(result.audio_bytes)),
         "X-Pipeline-Latency-Ms": str(result.latency_ms),
+        "X-Search-Used": "true" if result.search_used else "false",
+        "X-Search-Sources": _safe_header_value(", ".join(result.search_sources or [])),
     }
 
     return Response(content=result.audio_bytes, media_type=media_type, headers=headers)

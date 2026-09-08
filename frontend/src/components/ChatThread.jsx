@@ -61,7 +61,12 @@ export default function ChatThread({
                   <div className="msg-bubble assistant-bubble-content">
                     <div className="msg-header">
                       <span className="msg-author">Voice Assistant</span>
-                      <span className="msg-rime-tag">Rime {turn.speaker || 'celeste'}</span>
+                      <span className="msg-rime-tag">Rime &bull; {turn.speaker || 'celeste'}</span>
+                      {turn.searchUsed && (
+                        <span className="turn-status-tag tag-authoritative" title="Real-time web search results from Tavily were incorporated">
+                          🔍 Web Search
+                        </span>
+                      )}
                       {isInterrupted ? (
                         <span className="turn-status-tag tag-interrupted">
                           <IconZap size={12} style={{ marginRight: 4 }} /> INTERRUPTED
@@ -71,10 +76,27 @@ export default function ChatThread({
                       )}
                     </div>
                     <div className="msg-text">
-                      {turn.assistantResponse || (isInterrupted ? '[Speech Haltered Promptly on Barge-In]' : '')}
+                      {turn.assistantResponse || (isInterrupted ? '[Speech Halted Promptly on Barge-In]' : '')}
                     </div>
-                    {turn.latencyMs && (
-                      <div className="msg-meta mono">Latency: {turn.latencyMs}ms</div>
+                    {turn.searchSources && turn.searchSources.length > 0 && (
+                      <div className="msg-sources" style={{ marginTop: '6px', fontSize: '11px', color: '#94a3b8' }}>
+                        <span>Sources: </span>
+                        {turn.searchSources.slice(0, 3).map((src, sIdx) => {
+                          let hostname = src;
+                          try { hostname = new URL(src).hostname.replace('www.', ''); } catch (e) {}
+                          return (
+                            <a
+                              key={sIdx}
+                              href={src}
+                              target="_blank"
+                              rel="noreferrer noopener"
+                              style={{ color: '#06b6d4', marginRight: '8px', textDecoration: 'underline' }}
+                            >
+                              {hostname}
+                            </a>
+                          );
+                        })}
+                      </div>
                     )}
                   </div>
                 </div>

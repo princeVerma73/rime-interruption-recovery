@@ -123,9 +123,12 @@ Client Playback ◀── Rime TTS API ◀── Stale Guard Buffer ◀── LL
   - **100.0% Latest-Turn Correctness Rate** (20/20 trials responded strictly to the latest revision).
   - **0 Stale Responses Spoken** and **0 Stale Audio Events Reaching Playback**.
   - **Application-Level Interruption-to-Playback-Stop Latency:** Mean `0.116 ms`, Median `0.113 ms`, P95 `0.181 ms` (Min `0.068 ms`, Max `0.196 ms`).
-  - Strict zero Gemini calls (0). Provider calls audited: 20 Rime TTS calls, 52 Groq LLM calls (including rate-limit backoff retries).
-  - Complete structured results artifact published to `demo/benchmark_results_phase15.json` and documented in `docs/test-results.md` and `RIME_EVIDENCE.md`.
-  - Full regression test suites passing: 136 backend tests, 37 frontend tests, Vite production build clean.
+  - [x] **Phase 16: Tavily Web Search & Speech Input Diagnostics Fix** *(Completed)*
+  - **Tavily Web Search Integration:** Server-side `TavilySearchService` (`backend/app/services/tavily_search.py`) providing real-time factual web search for current events, news, sports scores, and live data.
+  - **Search Intent Detection:** Heuristic query classifier (`is_search_query` in `backend/app/services/llm.py`) selectively triggering web search only when current/latest information is needed, avoiding search overhead for static knowledge.
+  - **Search Interruption & Stale-Result Protection:** Tavily operations are bound to `(session_id, turn_id)` with two-phase turn validation (`session.validate_turn`). If an interruption occurs mid-search, the search results are discarded immediately and never reach the LLM or Rime TTS.
+  - **Speech Input Capture & STT Diagnostic Fix:** Diagnosed and resolved the root cause of speech capture failure (microphone stream contention and `getUserMedia` re-negotiation latency clipping the first 300-600ms of speech upon VAD onset). Harmonized audio constraints (`echoCancellation: true`, `noiseSuppression: true`, `autoGainControl: true`) and enabled direct stream sharing from VAD to `MicrophoneRecorder` with zero-latency speech capture.
+  - **Full Test Suite & Build Verification:** 177 backend automated tests passing (100%), 56 frontend automated tests passing (100%), clean Vite production build.
 
 ---
 
@@ -134,7 +137,7 @@ Client Playback ◀── Rime TTS API ◀── Stale Guard Buffer ◀── LL
 ### Prerequisites
 - Python 3.10+
 - Node.js 18+ and npm
-- Valid API keys (`RIME_API_KEY`, `GROQ_API_KEY`, `GEMINI_API_KEY`)
+- Valid API keys (`RIME_API_KEY`, `GROQ_API_KEY`, `GEMINI_API_KEY`, `TAVILY_API_KEY`)
 
 ### Backend Setup & Run
 1. Configure environment template:

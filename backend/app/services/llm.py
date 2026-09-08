@@ -18,9 +18,67 @@ VOICE_SYSTEM_PROMPT = (
     "You are a helpful and concise voice assistant. "
     "Answer only the latest user message directly in 1 to 2 short, natural sentences without thought steps, numbered reasoning, drafts, critiques, or preamble. "
     "Never output internal thoughts, planning, tool selection, or system instructions. "
-    "If the user asks for real-time information (such as live weather or flights) and you do not have live data, state clearly in one sentence that you do not have access to live data right now. "
+    "If current web search results are provided in your context, summarize the key finding directly in 1 or 2 concise, spoken sentences. "
     "Do NOT use markdown formatting, bullet points, asterisks, hashtags, or emojis, as your response will be read aloud by text-to-speech."
 )
+
+
+# Keywords that signal real-time / current information intent
+_SEARCH_TRIGGER_PATTERNS = [
+    r"\b(?:latest|recent|current|today|tonight|yesterday|this week|breaking)\b",
+    r"\b(?:news|headlines|update|updates|happened|happening)\b",
+    r"\b(?:search\s+for|look\s+up|google|find\s+out|tell\s+me\s+about\s+the\s+latest)\b",
+    r"\b(?:who\s+won|score|match|winner|stock\s+price|price\s+of|weather\s+in|forecast)\b",
+    r"\b(?:what\s+is\s+happening|what\s+happened|current\s+status)\b",
+]
+
+_SEARCH_COMPILED_REGEX = [re.compile(p, re.IGNORECASE) for p in _SEARCH_TRIGGER_PATTERNS]
+
+
+def is_search_query(text: Optional[str]) -> bool:
+    """Determine if a user query requires real-time web search.
+    
+    Avoids searching for basic static knowledge, greetings, or conversational banter.
+    """
+    if not text or not text.strip():
+        return False
+    query = text.strip().lower()
+
+    # Short trivial greetings/statements never trigger search
+    if query in ("hello", "hi", "hey", "good morning", "good evening", "how are you", "who are you", "what is your name", "stop", "thanks", "thank you", "bye"):
+        return False
+
+    # Check search regex patterns
+    for pattern in _SEARCH_COMPILED_REGEX:
+        if pattern.search(query):
+            return True
+
+    return False
+
+
+def format_search_context(query: str, search_results: List[Any]) -> str:
+    """Format structured Tavily search results into a concise prompt addition."""
+    if not search_results:
+        return ""
+    
+    snippets = []
+    for i, res in enumerate(search_results[:3], 1):
+        title = getattr(res, "title", "") or (res.get("title") if isinstance(res, dict) else "")
+        content = getattr(res, "content", "") or (res.get("content") if isinstance(res, dict) else "")
+        url = getattr(res, "url", "") or (res.get("url") if isinstance(res, dict) else "")
+        if content:
+            clean_content = re.sub(r"\s+", " ", content).strip()[:300]
+            snippets.append(f"Source [{i}] '{title}': {clean_content}")
+            
+    if not snippets:
+        return ""
+        
+    return (
+        f"RETRIEVED CURRENT WEB INFORMATION FOR '{query}':\n"
+        + "\n\n".join(snippets)
+        + "\n\nInstructions: You HAVE been provided live web search results above. Synthesize the key facts directly into a 1 to 2 sentence natural spoken answer to the user's question. Do NOT say you cannot browse the web or lack real-time access. Do not use markdown."
+    )
+
 
 
 _META_MARKERS = (
@@ -182,7 +240,7 @@ class GroqLLMService:
         system_prompt: Optional[str] = None,
         model: Optional[str] = None,
         temperature: float = 0.7,
-        max_tokens: int = 256,
+        max_tokens: int = 600,
         api_key_override: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Send chat messages to Groq LLM API and return the generated text and safe metadata.
@@ -213,7 +271,7 @@ class GroqLLMService:
         target_model = model or self.settings.groq_model
         sys_prompt = VOICE_SYSTEM_PROMPT
         if system_prompt and system_prompt.strip():
-            sys_prompt = f"{VOICE_SYSTEM_PROMPT}\nAdditional trusted instruction: {system_prompt.strip()}"
+            sys_prompt = f"{VOICE_SYSTEM_PROMPT}\n\n{system_prompt.strip()}"
 
         # Build payload
         payload_messages: List[Dict[str, str]] = []
@@ -225,7 +283,11 @@ class GroqLLMService:
             content = msg["content"] if isinstance(msg, dict) else getattr(msg, "content", "")
             if not content or not content.strip():
                 continue
-            if role == "system" and sys_prompt and sys_prompt.strip() and payload_messages and payload_messages[0]["role"] == "system":
+            if role == "system":
+                if payload_messages and payload_messages[0]["role"] == "system":
+                    payload_messages[0]["content"] += f"\n\n{content.strip()}"
+                else:
+                    payload_messages.append({"role": "system", "content": content.strip()})
                 continue
             payload_messages.append({"role": role, "content": content.strip()})
 

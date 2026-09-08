@@ -198,6 +198,8 @@ export class VoiceApiClient {
       audioFormat: res.headers.get('X-Audio-Format') || 'mp3',
       audioBytesLength: parseInt(res.headers.get('X-Audio-Bytes-Length') || String(blob.size), 10),
       latencyMs: parseFloat(res.headers.get('X-Pipeline-Latency-Ms') || '0'),
+      searchUsed: res.headers.get('X-Search-Used') === 'true',
+      searchSources: safeDecodeHeader(res.headers.get('X-Search-Sources')) ? safeDecodeHeader(res.headers.get('X-Search-Sources')).split(', ').filter(Boolean) : [],
     };
 
     return { blob, headers };
@@ -255,6 +257,8 @@ export class VoiceApiClient {
       audioFormat: res.headers.get('X-Audio-Format') || 'mp3',
       audioBytesLength: parseInt(res.headers.get('X-Audio-Bytes-Length') || String(blob.size), 10),
       latencyMs: parseFloat(res.headers.get('X-Pipeline-Latency-Ms') || '0'),
+      searchUsed: res.headers.get('X-Search-Used') === 'true',
+      searchSources: safeDecodeHeader(res.headers.get('X-Search-Sources')) ? safeDecodeHeader(res.headers.get('X-Search-Sources')).split(', ').filter(Boolean) : [],
     };
 
     return { blob, headers };

@@ -82,6 +82,7 @@ export default function App() {
   const [errorMessage, setErrorMessage] = useState('');
   const [isDevMode, setIsDevMode] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [metricAE2eLatencyMs, setMetricAE2eLatencyMs] = useState(null);
   // Audio device state & microphone testing
   const [micLevel, setMicLevel] = useState(0);
   const [audioDevices, setAudioDevices] = useState([]);
@@ -92,6 +93,7 @@ export default function App() {
   const testStreamRef = React.useRef(null);
   const testIntervalRef = React.useRef(null);
   const testCtxRef = React.useRef(null);
+  const abandonmentTimerRef = React.useRef(null);
 
   // Enumerate input devices on mount
   useEffect(() => {
@@ -229,7 +231,7 @@ export default function App() {
       if (state === PlaybackState.PLAYING) {
         setAgentState(AgentState.PLAYING);
       } else if (state === PlaybackState.IDLE && !isRecording && !isProcessing) {
-        setAgentState(AgentState.IDLE);
+        setAgentState(isVADActive ? AgentState.LISTENING : AgentState.IDLE);
       }
     });
 
@@ -247,7 +249,7 @@ export default function App() {
         setIsRecording(false);
         setIsProcessing(false);
         setAgentState(AgentState.ERROR);
-        setErrorMessage('Microphone access was denied or failed to initialize.');
+        setErrorMessage('Microphone access is required for voice input.');
       }
     });
 
@@ -258,9 +260,13 @@ export default function App() {
     // 4. VAD real-time barge-in and hands-free continuous speech listener
     const unsubVAD = defaultVAD.onEvent(async (evt) => {
       if (evt.eventType === VADEventType.SPEECH_STARTED) {
+        if (abandonmentTimerRef.current) {
+          clearTimeout(abandonmentTimerRef.current);
+          abandonmentTimerRef.current = null;
+        }
         if (defaultRecorder.state !== RecorderState.RECORDING && !isProcessing) {
           try {
-            await defaultRecorder.startRecording();
+            await defaultRecorder.startRecording(selectedDeviceId || null, defaultVAD.getMediaStream());
             setAgentState(AgentState.LISTENING);
           } catch (e) {
             console.error('Failed to start recorder on VAD speech onset:', e);
@@ -268,6 +274,7 @@ export default function App() {
         }
       } else if (evt.eventType === VADEventType.SPEECH_ENDED) {
         if (defaultRecorder.state === RecorderState.RECORDING) {
+          const t_speech_end = Date.now();
           try {
             const recResult = await defaultRecorder.stopRecording();
             if (recResult && recResult.blob && recResult.blob.size > 0) {
@@ -295,6 +302,8 @@ export default function App() {
                   speaker: headers.speaker || 'celeste',
                   modelId: headers.modelId || 'coda',
                   latencyMs: headers.latencyMs,
+                  searchUsed: headers.searchUsed,
+                  searchSources: headers.searchSources,
                   status: 'COMPLETED',
                 },
               ]);
@@ -316,6 +325,10 @@ export default function App() {
                 },
                 ...prev.slice(0, 59),
               ]);
+
+              const t_audio_start = Date.now();
+              const measuredE2eMs = t_audio_start - t_speech_end;
+              setMetricAE2eLatencyMs(measuredE2eMs);
 
               setAgentState(AgentState.PLAYING);
               await defaultPlaybackManager.playAudio({
@@ -675,6 +688,8 @@ export default function App() {
             speaker: headers.speaker || 'celeste',
             modelId: headers.modelId || 'coda',
             latencyMs: headers.latencyMs,
+            searchUsed: headers.searchUsed,
+            searchSources: headers.searchSources,
             status: 'COMPLETED',
           },
         ]);
@@ -694,6 +709,7 @@ export default function App() {
               speaker: headers.speaker,
               audio_bytes: headers.audioBytesLength,
               latency_ms: headers.latencyMs,
+              search_used: headers.searchUsed,
             },
           },
           ...prev.slice(0, 59),
@@ -744,6 +760,10 @@ export default function App() {
 
   // Handler: Text-based Voice Agent Pipeline
   const handleProcessText = async (customPrompt = null) => {
+    if (abandonmentTimerRef.current) {
+      clearTimeout(abandonmentTimerRef.current);
+      abandonmentTimerRef.current = null;
+    }
     const promptToSend = typeof customPrompt === 'string' ? customPrompt : ttsText;
     if (!sessionId || !promptToSend.trim()) return;
 
@@ -773,6 +793,8 @@ export default function App() {
           speaker: headers.speaker || 'celeste',
           modelId: headers.modelId || 'coda',
           latencyMs: headers.latencyMs,
+          searchUsed: headers.searchUsed,
+          searchSources: headers.searchSources,
           status: 'COMPLETED',
         },
       ]);
@@ -929,21 +951,53 @@ export default function App() {
     }
   };
 
-  // Handler: Toggle Continuous VAD
-  const handleToggleVAD = async () => {
+  // Handler: Single Unified Voice Interaction Toggle (Hands-Free with Auto-Endpointing)
+  const handleToggleVoice = async () => {
+    if (abandonmentTimerRef.current) {
+      clearTimeout(abandonmentTimerRef.current);
+      abandonmentTimerRef.current = null;
+    }
+
     if (isVADActive) {
       defaultVAD.stop();
+      if (defaultRecorder.state === RecorderState.RECORDING) {
+        defaultRecorder.cancelRecording();
+      }
       setIsVADActive(false);
+      setIsRecording(false);
+      setAgentState(AgentState.IDLE);
     } else {
       try {
         setErrorMessage('');
+        defaultPlaybackManager.primePlayback();
         await defaultVAD.start();
         setIsVADActive(true);
+        setAgentState(AgentState.LISTENING);
+
+        // Auto-end if voice session is completely abandoned without any speech within 4.5s
+        abandonmentTimerRef.current = setTimeout(() => {
+          if (defaultRecorder.state !== RecorderState.RECORDING && !isProcessing) {
+            console.log('Abandoned voice session auto-ended due to inactivity.');
+            defaultVAD.stop();
+            setIsVADActive(false);
+            setIsRecording(false);
+            setAgentState(AgentState.IDLE);
+          }
+        }, 4500);
       } catch (err) {
-        setErrorMessage(`VAD Initialization Error: ${err.message}`);
+        console.error('Voice Assistant initialization error:', err);
+        setAgentState(AgentState.ERROR);
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError' || err.message?.includes('denied')) {
+          setErrorMessage('Microphone access is required for voice input.');
+        } else {
+          setErrorMessage(`Microphone access error: ${err.message}`);
+        }
       }
     }
   };
+
+  // Handler: Toggle Continuous VAD (Dev Mode compatibility)
+  const handleToggleVAD = handleToggleVoice;
 
   const handleSelectQuickPrompt = (promptText) => {
     setTtsText(promptText);
@@ -1068,8 +1122,11 @@ export default function App() {
                     <span className="stat-val highlight-green">0 events</span>
                   </div>
                   <div className="benchmark-stat stat-wide">
-                    <span className="stat-label">Application-level interruption latency</span>
+                    <span className="stat-label">Application-Level Interruption Stop Latency (Metric B)</span>
                     <span className="stat-val mono">Mean: 0.116 ms &bull; P95: 0.181 ms (Min: 0.068 ms, Max: 0.196 ms)</span>
+                    <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>
+                      * Measured in-memory state-machine &amp; audio buffer purge timing upon barge-in acceptance (excludes acoustic microphone-to-speaker air transit).
+                    </div>
                   </div>
                 </div>
               )}
@@ -1144,9 +1201,7 @@ export default function App() {
           text={ttsText}
           setText={setTtsText}
           onSend={handleProcessText}
-          onToggleRecord={handleToggleRecord}
-          onStopAudio={handleStopAudio}
-          onToggleVAD={handleToggleVAD}
+          onToggleVoice={handleToggleVoice}
           isRecording={isRecording}
           isProcessing={isProcessing}
           isLoading={isLoading}
@@ -1154,6 +1209,7 @@ export default function App() {
           playbackState={playbackState}
           agentState={agentState}
           onSelectQuickPrompt={handleSelectQuickPrompt}
+          metricAE2eLatencyMs={metricAE2eLatencyMs}
         />
       </div>
     </div>

@@ -64,9 +64,10 @@ export class MicrophoneRecorder {
   /**
    * Request microphone permission and begin recording audio.
    * @param {string} [deviceId] Optional device ID to select a specific microphone
+   * @param {MediaStream} [existingStream] Optional active MediaStream to reuse without re-negotiating getUserMedia
    * @returns {Promise<void>}
    */
-  async startRecording(deviceId = null) {
+  async startRecording(deviceId = null, existingStream = null) {
     if (!this.isSupported()) {
       this._transitionTo(RecorderState.ERROR);
       throw new Error('Microphone recording is not supported in this browser environment.');
@@ -77,22 +78,27 @@ export class MicrophoneRecorder {
     }
 
     try {
-      const audioConstraints = deviceId
-        ? {
-            deviceId: { exact: deviceId },
-            echoCancellation: true,
-            autoGainControl: true,
-            noiseSuppression: false,
-          }
-        : {
-            echoCancellation: true,
-            autoGainControl: true,
-            noiseSuppression: false,
-          };
+      this._isSharedStream = Boolean(existingStream && existingStream.active);
+      if (this._isSharedStream) {
+        this.mediaStream = existingStream;
+      } else {
+        const audioConstraints = deviceId
+          ? {
+              deviceId: { exact: deviceId },
+              echoCancellation: true,
+              autoGainControl: true,
+              noiseSuppression: true,
+            }
+          : {
+              echoCancellation: true,
+              autoGainControl: true,
+              noiseSuppression: true,
+            };
 
-      this.mediaStream = await navigator.mediaDevices.getUserMedia({
-        audio: audioConstraints,
-      });
+        this.mediaStream = await navigator.mediaDevices.getUserMedia({
+          audio: audioConstraints,
+        });
+      }
 
       // Set up AudioContext for live volume metering and silence verification
       try {
@@ -252,13 +258,13 @@ export class MicrophoneRecorder {
       } catch (e) {}
       this.sourceNode = null;
     }
-    if (this.audioContext) {
+    if (this.audioContext && !this._isSharedStream) {
       try {
         this.audioContext.close();
       } catch (e) {}
       this.audioContext = null;
     }
-    if (this.mediaStream) {
+    if (this.mediaStream && !this._isSharedStream) {
       this.mediaStream.getTracks().forEach((track) => track.stop());
       this.mediaStream = null;
     }
