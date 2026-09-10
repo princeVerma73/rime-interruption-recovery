@@ -6,8 +6,6 @@ demo video:- https://drive.google.com/file/d/18CxlSAaPEIsbY0RD3Upxf5hlah3t9gzX/v
 
 live application link :- https://rime-interruption-recovery-s5f7.onrender.com/
 
-GitHub Repo link :- https://github.com/princeVerma73/rime-interruption-recovery
-
 
 
 ## 1. Project Overview & Name
