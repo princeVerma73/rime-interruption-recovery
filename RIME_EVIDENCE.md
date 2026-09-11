@@ -2,9 +2,7 @@
 
 **Project:** Voice AI Assistant with Interruption & Recovery  
 **Hackathon:** DataForge 2026 Rime Hackathon  
-**Primary TTS Provider:** Rime Labs (Ultra-Low Latency Conversational Voice Output)  
-**Verification Phase:** Phase 15 — Real Acceptance Benchmark (completed)  
-**Current Implementation:** Phase 16 — Tavily Web Search & Speech Input Diagnostics Fix  
+**Primary TTS Provider:** Rime Labs (Ultra-Low Latency Conversational Voice Output)   
 **Benchmark Artifact:** [demo/benchmark_results_phase15.json](demo/benchmark_results_phase15.json)  
 **Recorded:** 2026-09-07 (UTC)  
 
